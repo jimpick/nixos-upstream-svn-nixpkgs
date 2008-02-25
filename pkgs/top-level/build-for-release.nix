@@ -1,4 +1,4 @@
-let {
+let
 
   allPackages = import ./all-packages.nix;
 
@@ -34,7 +34,7 @@ let {
     cpio
     cron
     cups
-    darcs
+    #darcs
     db4
     dhcp
     dietlibc
@@ -62,7 +62,6 @@ let {
     gcc42
     gdb
     ghc
-    ghc68
     ghostscript
     gimp
     gnugrep
@@ -120,7 +119,7 @@ let {
     nss_ldap
     ntp    
     nxml
-    openoffice
+    #openoffice
     openssh
     openssl
     pam_console
@@ -140,7 +139,7 @@ let {
     pwdutils
     python
     qt3
-    quake3demo
+    #quake3demo
     readline
     reiserfsprogs
     rogue
@@ -240,14 +239,10 @@ let {
     ;    
   };
   
-  powerpcLinuxPkgs = {inherit (allPackages {system = "powerpc-linux";})
-    aterm
-  ;};
-  
   i686FreeBSDPkgs = {inherit (allPackages {system = "i686-freebsd";})
     aterm
     autoconf
-    automake19x
+    #automake19x
     docbook5
     docbook_xml_dtd_42
     docbook_xml_dtd_43
@@ -266,7 +261,7 @@ let {
     apacheHttpd
     aterm
     autoconf
-    automake19x
+    #automake19x
     bison23
     docbook5
     docbook_xml_dtd_42
@@ -279,7 +274,7 @@ let {
     nxml
     #php
     subversion
-    tetex
+    #tetex
     unzip
   ;};
 
@@ -300,13 +295,11 @@ let {
     ncurses
   ;};
 
-  body = [
-    i686LinuxPkgs
-    x86_64LinuxPkgs
-    powerpcLinuxPkgs
-    i686FreeBSDPkgs
-    powerpcDarwinPkgs
-    i686DarwinPkgs
-    cygwinPkgs
-  ];
-}
+in [
+  i686LinuxPkgs
+  x86_64LinuxPkgs
+  i686FreeBSDPkgs
+  powerpcDarwinPkgs
+  i686DarwinPkgs
+  cygwinPkgs
+]

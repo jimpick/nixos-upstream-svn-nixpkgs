@@ -119,7 +119,8 @@ rec {
   # inside the set for derivations.
   recurseIntoAttrs = attrs: attrs // {recurseForDerivations = true;};
 
-  useFromStdenv = hasIt: it: alternative: if hasIt then it else alternative;
+  useFromStdenv = it : alternative : if (builtins.hasAttr it stdenv) then
+    (builtins.getAttr it stdenv) else alternative;
 
   lib = import ../lib;
 
@@ -257,7 +258,15 @@ rec {
   # Call a specific version of a Nix expression, that is,
   # `selectVersion ./foo {version = "0.1.2"; args...}' evaluates to
   # `import ./foo/0.1.2.nix args'.
-  selectVersion = dir: args: import (dir + "/${args.version}.nix") args;
+  selectVersion = dir: defVersion: args:
+    let
+      pVersion =
+        if (args ? version && args.version != "") then
+          args.version
+        else
+          getConfig [ (baseNameOf (toString dir)) "version" ] defVersion;
+    in
+      import (dir + "/${pVersion}.nix") (args // { version = pVersion; });
         
         
   ### STANDARD ENVIRONMENT
@@ -279,8 +288,6 @@ rec {
         }
       else defaultStdenv;
 
-  stdenvUsingSetupNew2 = overrideSetup stdenv ../stdenv/generic/setup-new-2.sh;
-  
 
   ### BUILD SUPPORT
 
@@ -309,7 +316,7 @@ rec {
 
   # Allow the stdenv to determine fetchurl, to cater for strange
   # requirements.
-  fetchurl = useFromStdenv (stdenv ? fetchurl) stdenv.fetchurl
+  fetchurl = useFromStdenv "fetchurl"
     (import ../build-support/fetchurl {
       inherit stdenv curl;
     });
@@ -337,15 +344,14 @@ rec {
  
   writeScriptBin = name: text: runCommand name {inherit text;} "mkdir -p \$out/bin; echo -n \"\$text\" > \$out/bin/\$name ; chmod +x \$out/bin/\$name";
  
-  stdenvNewSetupScript = overrideSetup stdenv ../stdenv/generic/setup-new.sh;
-
   substituteAll = import ../build-support/substitute/substitute-all.nix {
-    stdenv = stdenvNewSetupScript;
+    inherit stdenv;
   };
 
   nukeReferences = import ../build-support/nuke-references/default.nix {
     inherit stdenv;
   };
+  
 
   ### TOOLS
 
@@ -358,8 +364,10 @@ rec {
     inherit fetchurl stdenv zlib wxGTK;
   };
 
-  avahi = import ../development/libraries/avahi {
-    inherit stdenv fetchurl pkgconfig libdaemon dbus;
+  avahi = selectVersion ../development/libraries/avahi "0.6.22" {
+    inherit stdenv fetchurl pkgconfig libdaemon dbus perl perlXMLParser qt4
+      python expat;
+    inherit (gtkLibs) glib gtk;
   };
 
   axel = import ../tools/networking/axel {
@@ -392,7 +400,7 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  bzip2 = useFromStdenv (stdenv ? bzip2) stdenv.bzip2
+  bzip2 = useFromStdenv "bzip2"
     (import ../tools/compression/bzip2 {
       inherit fetchurl stdenv;
     });
@@ -409,7 +417,7 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  coreutils = useFromStdenv (stdenv ? coreutils) stdenv.coreutils
+  coreutils = useFromStdenv "coreutils"
     ((if stdenv ? isDietLibC
       then import ../tools/misc/coreutils-5
       else import ../tools/misc/coreutils)
@@ -441,15 +449,14 @@ rec {
     inherit fetchurl stdenv groff nettools coreutils iputils gnused bash;
   };
 
-  diffutils = useFromStdenv (stdenv ? diffutils) stdenv.diffutils
+  diffutils = useFromStdenv "diffutils"
     (import ../tools/text/diffutils {
       inherit fetchurl stdenv coreutils;
     });
 
-  dosfstoolsFun = lib.sumArgs (selectVersion ../tools/misc/dosfstools)
+  dosfstoolsFun = lib.sumArgs (selectVersion ../tools/misc/dosfstools "2.11deb")
   {
     inherit builderDefs;
-    version = "2.11deb";
   };
 
   dosfstools = dosfstoolsFun null;
@@ -480,7 +487,7 @@ rec {
     qt = qt3;
   };
 
-  findutils = useFromStdenv (stdenv ? findutils) stdenv.findutils
+  findutils = useFromStdenv "findutils"
     (if system == "i686-darwin" then findutils4227 else
       import ../tools/misc/findutils {
         inherit fetchurl stdenv coreutils;
@@ -504,20 +511,18 @@ rec {
       libungif libpng libjpeg libtiff libxml2;
   };
 
-  gawk = useFromStdenv (stdenv ? gawk) stdenv.gawk
+  gawk = useFromStdenv "gawk"
     (import ../tools/text/gawk {
       inherit fetchurl stdenv;
     });
 
-  gdmapFun = lib.sumArgs (selectVersion ../tools/system/gdmap) {
+  gdmapFun = lib.sumArgs (selectVersion ../tools/system/gdmap "0.7.5") {
     inherit stdenv fetchurl builderDefs pkgconfig libxml2
       intltool;
     inherit (gtkLibs) gtk;
   };
 
-  gdmap = gdmapFun {
-  	version = "0.7.5";
-  } null;
+  gdmap = gdmapFun null;
 
   getopt = import ../tools/misc/getopt {
     inherit fetchurl stdenv;
@@ -528,12 +533,12 @@ rec {
     inherit (xlibs) libXext;
   };
 
-  gnugrep = useFromStdenv (stdenv ? gnugrep) stdenv.gnugrep
+  gnugrep = useFromStdenv "gnugrep"
     (import ../tools/text/gnugrep {
       inherit fetchurl stdenv pcre;
     });
 
-  gnupatch = useFromStdenv (stdenv ? patch) stdenv.patch (import ../tools/text/gnupatch {
+  gnupatch = useFromStdenv "patch" (import ../tools/text/gnupatch {
     inherit fetchurl stdenv;
   });
 
@@ -557,7 +562,7 @@ rec {
     x11Support = true;
   };
 
-  gnused = useFromStdenv (stdenv ? gnused) stdenv.gnused
+  gnused = useFromStdenv "gnused"
     (import ../tools/text/gnused {
       inherit fetchurl stdenv;
     });
@@ -566,7 +571,7 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  gnutar = useFromStdenv (stdenv ? gnutar) stdenv.gnutar
+  gnutar = useFromStdenv "gnutar"
     (import ../tools/archivers/gnutar {
       inherit fetchurl stdenv;
     });
@@ -597,7 +602,7 @@ rec {
     inherit (gtkLibs) glib gtk;
   };
 
-  gzip = useFromStdenv (stdenv ? gzip) stdenv.gzip
+  gzip = useFromStdenv "gzip"
     (import ../tools/compression/gzip {
       inherit fetchurl stdenv;
     });
@@ -610,17 +615,13 @@ rec {
     inherit fetchurl stdenv ocaml;
   };
 
-  /*hyppocampusFun = lib.sumArgs ( selectVersion ../tools/misc/hyppocampus ) {
+  /*hyppocampusFun = lib.sumArgs ( selectVersion ../tools/misc/hyppocampus "0.3rc1") {
     inherit builderDefs stdenv fetchurl libdbi libdbiDrivers fuse
       pkgconfig perl gettext dbus dbus_glib pcre libscd;
     inherit (gtkLibs) glib;
     bison = bison23;
     flex = flex2533;
-  };
-
-  hyppocampus = hyppocampusFun {
-    version = "0.3rc1";
-  } null;*/
+  };*/
 
   inetutils = import ../tools/networking/inetutils {
     inherit fetchurl stdenv;
@@ -706,8 +707,7 @@ rec {
     inherit fetchurl stdenv gettext;
   };
 
-  nc6Fun = lib.sumArgs (selectVersion ../tools/networking/nc6) {
-    version = "1.0";
+  nc6Fun = lib.sumArgs (selectVersion ../tools/networking/nc6 "1.0") {
     inherit builderDefs;
   };
 
@@ -786,15 +786,13 @@ rec {
     zlibSupport = !stdenv ? isDietLibC;
   };
 
-  relfsFun = lib.sumArgs (selectVersion ../tools/misc/relfs) {
+  relfsFun = lib.sumArgs (selectVersion ../tools/misc/relfs "cvs.2007.12.01") {
     inherit fetchcvs stdenv ocaml postgresql fuse pcre
       builderDefs e2fsprogs pkgconfig;
     inherit (gnome) gnomevfs GConf;
   };
 
-  relfs = relfsFun {
-    version = "cvs.2007.12.01";
-  } null;
+  relfs = relfsFun null;
 
   replace = import ../tools/text/replace {
     inherit fetchurl stdenv;
@@ -807,9 +805,8 @@ rec {
   };
   */
 
-  rlwrapFun = lib.sumArgs (selectVersion ../tools/misc/rlwrap) {
-  	version = "0.28";
-	inherit builderDefs readline;
+  rlwrapFun = lib.sumArgs (selectVersion ../tools/misc/rlwrap "0.28") {
+    inherit builderDefs readline;
   };
 
   rlwrap = rlwrapFun null;
@@ -830,24 +827,25 @@ rec {
     inherit fetchurl stdenv ncurses;
   };
 
+  sharutils = selectVersion ../tools/archivers/sharutils "4.6.3" {
+    inherit fetchurl stdenv;
+  };
+
   shebangfix = import ../tools/misc/shebangfix {
-    inherit perl;
-    stdenv = overrideSetup stdenv ../stdenv/generic/setup-new-2.sh;
+    inherit stdenv perl;
   };
 
   smartmontools = import ../tools/system/smartmontools {
     inherit fetchurl stdenv;
   };
 
-  smbfsFuseFun = lib.sumArgs (selectVersion ../tools/networking/smbfs-fuse) {
-    version = "0.8.7";
+  smbfsFuseFun = lib.sumArgs (selectVersion ../tools/networking/smbfs-fuse "0.8.7") {
     inherit builderDefs samba fuse;
   };
 
   smbfsFuse = smbfsFuseFun null;
 
-  socatFun = lib.sumArgs (selectVersion ../tools/networking/socat) {
-    version = "1.6.0.0";
+  socatFun = lib.sumArgs (selectVersion ../tools/networking/socat "1.6.0.0") {
     inherit builderDefs openssl;
   };
 
@@ -927,9 +925,11 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  wget = import ../tools/networking/wget {
+  wgetFun = lib.sumArgs (selectVersion ../tools/networking/wget "1.11") {
     inherit fetchurl stdenv gettext;
   };
+
+  wget = wgetFun null;
 
   which = import ../tools/system/which {
     inherit fetchurl stdenv readline;
@@ -937,7 +937,7 @@ rec {
 
   wv = import ../tools/misc/wv {
     inherit fetchurl stdenv libpng zlib imagemagick
-	pkgconfig libgsf libxml2 bzip2;
+      pkgconfig libgsf libxml2 bzip2;
     inherit (gtkLibs) glib;
   };
 
@@ -989,26 +989,24 @@ rec {
   ### SHELLS
 
 
-  bash = lowPrio (useFromStdenv (stdenv ? bash) stdenv.bash
+  bash = lowPrio (useFromStdenv "bash"
     (import ../shells/bash {
       inherit fetchurl stdenv;
       bison = bison23;
     }));
 
   bashInteractive = appendToName "interactive" (import ../shells/bash {
-    inherit fetchurl ncurses;
+    inherit fetchurl stdenv ncurses;
     bison = bison23;
     interactive = true;
-    stdenv = stdenvUsingSetupNew2;
   });
 
   tcsh = import ../shells/tcsh {
     inherit fetchurl stdenv ncurses;
   };
 
-  zshFun = lib.sumArgs (selectVersion ../shells/zsh) {
+  zshFun = lib.sumArgs (selectVersion ../shells/zsh "4.3.5") {
     inherit fetchurl stdenv ncurses coreutils;
-    version = "4.3.5";
   };
 
   zsh = zshFun null;
@@ -1092,7 +1090,7 @@ rec {
     inherit stdenv;
   };
  
-  gcc = gcc41;
+  gcc = gcc42;
 
   gcc295 = wrapGCC (import ../development/compilers/gcc-2.95 {
     inherit fetchurl stdenv noSysDirs;
@@ -1117,17 +1115,14 @@ rec {
     profiledCompiler = true;
   });
 
-  gcc41 = useFromStdenv (stdenv ? gcc) stdenv.gcc (wrapGCC (import ../development/compilers/gcc-4.1 {
+  gcc41 = wrapGCC (import ../development/compilers/gcc-4.1 {
     inherit fetchurl stdenv noSysDirs;
     texinfo = texinfo49;
     profiledCompiler = false;
-  }));
+  });
 
-  gcc41NPTL = wrapGCCWithGlibc gcc41.gcc glibcNPTL;
-
-  gcc42 = lowPrio (wrapGCC (import ../development/compilers/gcc-4.2 {
+  gcc42 = useFromStdenv "gcc" (wrapGCC (import ../development/compilers/gcc-4.2 {
     inherit fetchurl stdenv noSysDirs;
-    texinfo = texinfo49;
     profiledCompiler = true;
   }));
 
@@ -1137,9 +1132,9 @@ rec {
   });
 
   # This new ghc stuff is under heavy development and will change ! 
-  # =========  =======================================================
+  # ===============================================================
 
-  # usage: see ghcPkgUtil.sh - use setup-new2 because of PATH_DELIMITER
+  # usage: see ghcPkgUtil.sh
   # depreceated -> use functions defined in builderDefs
   ghcPkgUtil = runCommand "ghcPkgUtil-internal" 
      { ghcPkgUtil = ../development/libraries/haskell/generic/ghcPkgUtil.sh; }
@@ -1148,17 +1143,15 @@ rec {
   ghcsAndLibs = 
     assert builtins ? listToAttrs;
     recurseIntoAttrs (import ../development/compilers/ghcs {
-      inherit ghcboot fetchurl recurseIntoAttrs perl gnum4 gmp readline lib;
+      inherit ghcboot fetchurl stdenv recurseIntoAttrs perl gnum4 gmp readline lib;
       inherit ghcPkgUtil annotatedDerivations hasktags ctags;
-      stdenv = stdenvUsingSetupNew2;
     });
 
   # creates ghc-X-wl wich adds the passed libraries to the env var GHC_PACKAGE_PATH
   createGhcWrapper = { ghcPackagedLibs ? false, ghc, libraries, name, suffix ? "ghc_wrapper_${ghc.name}" } :
         import ../development/compilers/ghc/createGhcWrapper {
-    inherit ghcPackagedLibs ghc name suffix libraries ghcPkgUtil
+    inherit stdenv ghcPackagedLibs ghc name suffix libraries ghcPkgUtil
       annotatedDerivations lib sourceWithTagsDerivation annotatedWithSourceAndTagInfo;
-    stdenv = stdenvUsingSetupNew2;
     installSourceAndTags = true;
   };
 
@@ -1172,7 +1165,7 @@ rec {
   # used now
   # goSrc contains source directory (containing the .cabal file)
   ghcCabalDerivation = args : null_ : with lib; with args;
-    stdenvUsingSetupNew2.mkDerivation ({
+    stdenv.mkDerivation ({
       goSrcDir = "cd ${srcDir}";
       inherit name src propagatedBuildInputs;
       phases = "unpackPhase patchPhase buildPhase";
@@ -1415,8 +1408,9 @@ rec {
   };
 
   ghcboot = lowPrio (appendToName "boot" (import ../development/compilers/ghc/boot.nix {
-    inherit fetchurl stdenv perl ncurses gmp;
+    inherit fetchurl stdenv ncurses gmp;
     readline = if stdenv.system == "i686-linux" then readline4 else readline;
+    perl = perl58;
   }));
 
   /*
@@ -1435,8 +1429,7 @@ rec {
   };
 
   helium = import ../development/compilers/helium {
-    inherit fetchurl stdenv;
-    ghc = ghc661;
+    inherit fetchurl stdenv ghc;
   };
 
   javafront = import ../development/compilers/java-front {
@@ -1506,8 +1499,7 @@ rec {
   ocaml = getVersion  "ocaml" ocaml_alts;
 
   ocaml_alts = import ../development/compilers/ocaml {
-    inherit fetchurl stdenv x11 ncurses stdenvUsingSetupNew2;
-	stdenv34 = overrideGCC stdenv gcc34;
+    inherit fetchurl stdenv x11 ncurses;
   };
 
 /*
@@ -1619,9 +1611,8 @@ rec {
     inherit (xlibs) libX11 libXau libXt;
   };
 
-  erlang = import ../development/interpreters/erlang {
-    stdenv = overrideGCC stdenv gcc41NPTL; 
-    inherit fetchurl perl gnum4 ncurses openssl;
+  erlang = selectVersion ../development/interpreters/erlang "R12B-1" {
+    inherit fetchurl stdenv perl gnum4 ncurses openssl;
   };
 
   guile = import ../development/interpreters/guile {
@@ -1647,6 +1638,10 @@ rec {
 
   perl = if !stdenv.isLinux then sysPerl else realPerl;
 
+  perl58 = import ../development/interpreters/perl-5.8 {
+    inherit fetchurl stdenv;
+  };
+
   # FIXME: unixODBC needs patching on Darwin (see darwinports)
   phpOld = import ../development/interpreters/php {
     inherit stdenv fetchurl flex bison libxml2 apacheHttpd;
@@ -1662,12 +1657,9 @@ rec {
 
   # compiling without xdebug is currenlty broken (should be easy to fix though 
   php_unstable = (import ../development/interpreters/php_configurable) {
-   inherit mkDerivationByConfiguration autoconf automake lib;
-   stdenv = stdenvUsingSetupNew2;
+   inherit stdenv mkDerivationByConfiguration autoconf automake lib;
    # optional features
-   inherit fetchurl flex bison apacheHttpd mysql; # gettext;
-   inherit libxml2;
-   inherit postgresql;
+   inherit fetchurl flex bison apacheHttpd mysql libxml2; # gettext;
    inherit zlib;
    flags = [ "xdebug" "mysql" "mysqli" "pdo_mysql" "libxml2" "apxs2" ];
   };
@@ -1678,22 +1670,20 @@ rec {
     inherit fetchurl stdenv zlib bzip2;
   };
 
-  pyrexFun = lib.sumArgs (selectVersion ../development/interpreters/pyrex) {
+  pyrexFun = lib.sumArgs (selectVersion ../development/interpreters/pyrex "0.9.6") {
     inherit fetchurl stdenv stringsWithDeps lib builderDefs;
 	python = builtins.getAttr "2.5" python_alts;
   };
 
-  pyrex = pyrexFun {version = "0.9.6";} null;
+  pyrex = pyrexFun null;
 
-  QiFun = lib.sumArgs (selectVersion ../development/compilers/qi) {
+  QiFun = lib.sumArgs (selectVersion ../development/compilers/qi "9.1") {
     inherit clisp stdenv fetchurl builderDefs unzip;
   };
 
-  Qi = QiFun {
-    version = getConfig ["Qi" "version"] "9.1";
-  } null;
+  Qi = QiFun null;
 
-  realPerl = import ../development/interpreters/perl {
+  realPerl = import ../development/interpreters/perl-5.10 {
     inherit fetchurl stdenv;
   };
 
@@ -1804,7 +1794,7 @@ rec {
   #  inherit lib fetchurl stdenv flex yacc;
   #};
 
-  binutils = useFromStdenv (stdenv ? binutils) stdenv.binutils
+  binutils = useFromStdenv "binutils"
     (import ../development/tools/misc/binutils {
       inherit fetchurl stdenv noSysDirs;
     });
@@ -1832,13 +1822,11 @@ rec {
   };
 
   elfutilsFun = lib.sumArgs 
-    (selectVersion ../development/tools/misc/elfutils) {
+    (selectVersion ../development/tools/misc/elfutils "0.131") {
       inherit fetchurl stdenv;
   };
 
-  elfutils = elfutilsFun {
-    version = "0.131";
-  } null;
+  elfutils = elfutilsFun null;
 
   epm = import ../development/tools/misc/epm {
     inherit fetchurl stdenv rpm;
@@ -1868,7 +1856,7 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  gnumake = useFromStdenv (stdenv ? gnumake) stdenv.gnumake
+  gnumake = useFromStdenv "gnumake"
     (import ../development/tools/build-managers/gnumake {
       inherit fetchurl stdenv;
     });
@@ -1898,8 +1886,7 @@ rec {
   };
 
   hasktags = import ../development/tools/misc/hasktags {
-    inherit fetchurl;
-    stdenv = stdenvUsingSetupNew2;
+    inherit fetchurl stdenv;
     ghc = ghcsAndLibs.ghc68.ghc;
   };
 
@@ -1911,13 +1898,11 @@ rec {
     inherit fetchurl stdenv perl perlXMLSimple;
   };
 
-  indentFun = lib.sumArgs (selectVersion ../development/tools/misc/indent) {
+  indentFun = lib.sumArgs (selectVersion ../development/tools/misc/indent "2.2.9") {
     inherit fetchurl stdenv builderDefs;
   };
 
-  indent = indentFun {
-    version = "2.2.9";
-  } null;
+  indent = indentFun null;
 
   jikespg = import ../development/tools/parsing/jikespg {
     inherit fetchurl stdenv;
@@ -1941,10 +1926,12 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  ltrace = import ../development/tools/misc/ltrace {
+  ltraceFun = lib.sumArgs (selectVersion ../development/tools/misc/ltrace "0.5-3deb") {
   	inherit fetchurl stdenv builderDefs stringsWithDeps lib;
 	elfutils = elfutilsFun {version = "0.127";} null;
   };
+
+  ltrace = ltraceFun null;
 
   mk = import ../development/tools/build-managers/mk {
     inherit fetchurl stdenv;
@@ -1954,7 +1941,7 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  patchelf = useFromStdenv (stdenv ? patchelf) stdenv.patchelf
+  patchelf = useFromStdenv "patchelf"
     (import ../development/tools/misc/patchelf {
       inherit fetchurl stdenv;
     });
@@ -1963,7 +1950,7 @@ rec {
    * pkgconfig is optionally taken from the stdenv to allow bootstrapping
    * of glib and pkgconfig itself on MinGW.
    */
-  pkgconfig = useFromStdenv (stdenv ? pkgconfig) stdenv.pkgconfig
+  pkgconfig = useFromStdenv "pkgconfig"
     (import ../development/tools/misc/pkgconfig {
       inherit fetchurl stdenv;
     });
@@ -2127,6 +2114,10 @@ rec {
     inherit fetchurl stdenv pkgconfig x11 fontconfig freetype zlib libpng;
   };
 
+  cairomm = import ../development/libraries/cairomm {
+    inherit fetchurl stdenv pkgconfig cairo x11 fontconfig freetype;
+  };
+
   chmlib = import ../development/libraries/chmlib {
     inherit fetchurl stdenv;
   };
@@ -2183,20 +2174,11 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  # I think, this is a bad practice to use getVersion for various build
-  # variants, but it's 5 o'clock now...
-  dbus = getVersion "dbus" dbus_alts;
-
-  dbus_alts = rec
-  {
-    noX11 = import ../development/libraries/dbus {
+  dbus = import ../development/libraries/dbus {
     inherit fetchurl stdenv pkgconfig expat;
-    };
-    withX11 = import ../development/libraries/dbus_x {
-	  inherit fetchurl stdenv pkgconfig expat;
 	  inherit (xlibs) libX11 libICE libSM;
-    };
-	default = noX11;
+    useX11 = getConfig [ "dbus" "tools" "useX11" ]
+      (getConfig [ "services" "xserver" "enable" ] false);
   };
 
   dbus_glib = import ../development/libraries/dbus-glib {
@@ -2212,7 +2194,7 @@ rec {
     inherit fetchurl stdenv perl;
   };
 
-  enchant = import ../development/libraries/enchant {
+  enchant = selectVersion ../development/libraries/enchant "1.3.0" {
 	  inherit fetchurl stdenv aspell pkgconfig;
 	  inherit (gnome) glib;
   };
@@ -2226,10 +2208,9 @@ rec {
   };
 
   facile = import ../development/libraries/facile {
-	  inherit fetchurl;
-      # Actually, we don't need this version but we need native-code compilation
-	  ocaml = builtins.getAttr "3.10.0" ocaml_alts;
-	  stdenv = stdenvUsingSetupNew2;
+    inherit fetchurl stdenv;
+    # Actually, we don't need this version but we need native-code compilation
+    ocaml = builtins.getAttr "3.10.0" ocaml_alts;
   };
 
   fcgi = import ../development/libraries/fcgi {
@@ -2293,11 +2274,11 @@ rec {
     # python / ruby support
   };
 
-  gettext = getVersion "gettext" gettext_alts;
-
-  gettext_alts = import ../development/libraries/gettext {
+  gettextFun = lib.sumArgs (selectVersion ../development/libraries/gettext "0.17") {
     inherit fetchurl stdenv;
   };
+
+  gettext = gettextFun null;
 
   gd = import ../development/libraries/gd {
     inherit fetchurl stdenv zlib libpng freetype libjpeg fontconfig;
@@ -2316,21 +2297,11 @@ rec {
     inherit (xlibs) libXmu libXi;
   };
 
-  glibc = useFromStdenv (stdenv ? glibc) stdenv.glibc
-    (import ../development/libraries/glibc {
+  glibc = useFromStdenv "glibc"
+    (import ../development/libraries/glibc-2.7 {
       inherit fetchurl stdenv kernelHeaders;
       #installLocales = false;
     });
-
-  glibcNPTL = import ../development/libraries/glibc-nptl {
-    inherit fetchurl kernelHeaders perl; 
-    stdenv = overrideGCC stdenv gcc34;
-  };
-
-  glibmm = import ../development/libraries/gtk-libs-2.6/glibmm {
-    inherit fetchurl stdenv pkgconfig libsigcxx;
-    inherit (gtkLibs26) glib;
-  };
 
   gmime = import ../development/libraries/gmime {
     inherit fetchurl stdenv pkgconfig zlib;
@@ -2344,6 +2315,16 @@ rec {
   #GMP ex-satellite, so better keep it near gmp
   mpfr = import ../development/libraries/mpfr {
     inherit fetchurl stdenv gmp;
+  };
+
+  gst_all = import ../development/libraries/gstreamer {
+    inherit lib selectVersion stdenv fetchurl perl bison flex pkgconfig libxml2
+      python alsaLib cdparanoia libogg libvorbis libtheora freetype liboil
+      libjpeg zlib speex libpng libdv aalib cairo libcaca flac hal libiec61883
+      dbus libavc1394 ladspaH taglib;
+    inherit (xorg) libX11 libXv libXext;
+    inherit (gtkLibs) glib pango gtk;
+    inherit (gnome) gnomevfs;
   };
 
   gnet = import ../development/libraries/gnet {
@@ -2367,43 +2348,15 @@ rec {
 
   gtkLibs = recurseIntoAttrs gtkLibs210;
 
-  gtkLibs1x = import ../development/libraries/gtk-libs-1.x {
+  gtkLibs1x = import ../development/libraries/gtk-libs/1.x {
     inherit fetchurl stdenv x11 libtiff libjpeg libpng;
   };
 
-  gtkLibs210 = import ../development/libraries/gtk-libs-2.10 {
+  gtkLibs210 = import ../development/libraries/gtk-libs/2.10 {
     inherit fetchurl stdenv pkgconfig gettext perl x11
-            libtiff libjpeg libpng cairo;
+            libtiff libjpeg libpng cairo libsigcxx cairomm;
     inherit (xlibs) libXinerama libXrandr;
     xineramaSupport = true;
-  };
-
-  gtkLibs22 = import ../development/libraries/gtk-libs-2.2 {
-    inherit fetchurl stdenv pkgconfig gettext perl x11
-            libtiff libjpeg libpng;
-  };
-
-  gtkLibs24 = import ../development/libraries/gtk-libs-2.4 {
-    inherit fetchurl stdenv pkgconfig gettext perl x11
-            libtiff libjpeg libpng;
-  };
-
-  gtkLibs26 = import ../development/libraries/gtk-libs-2.6 {
-    inherit fetchurl stdenv pkgconfig gettext perl x11
-            libtiff libjpeg libpng;
-  };
-
-  gtkLibs28 = import ../development/libraries/gtk-libs-2.8 {
-    inherit fetchurl stdenv pkgconfig gettext perl x11
-            libtiff libjpeg libpng cairo;
-    inherit (xlibs) libXinerama;
-    xineramaSupport = true;
-  };
-
-  gtkmm = import ../development/libraries/gtk-libs-2.6/gtkmm {
-    inherit fetchurl stdenv pkgconfig libsigcxx;
-    inherit (gtkLibs26) gtk atk;
-    inherit glibmm;
   };
 
   gtkmozembedsharp = import ../development/libraries/gtkmozembed-sharp {
@@ -2457,6 +2410,10 @@ rec {
     inherit fetchurl stdenv;
   };
 
+  ilbc = import ../development/libraries/ilbc {
+    inherit stdenv msilbc;
+  };
+
   ilmbase = import ../development/libraries/ilmbase {
 	  inherit fetchurl stdenv;
   };
@@ -2478,12 +2435,12 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  intltoolFun = lib.sumArgs (selectVersion ../development/tools/misc/intltool) {
+  intltoolFun = lib.sumArgs (selectVersion ../development/tools/misc/intltool "0.36.2") {
     inherit fetchurl stdenv lib builderDefs stringsWithDeps
       perl perlXMLParser;
   };
 
-  intltool = intltoolFun {version = "0.36.2";} null;
+  intltool = intltoolFun null;
 
   jasper = import ../development/libraries/jasper {
 	  inherit fetchurl stdenv unzip libjpeg freeglut mesa;
@@ -2512,8 +2469,8 @@ rec {
     inherit stdenv fetchurl pkgconfig;
   };
 
-  libarchive = import ../development/libraries/libarchive {
-    inherit fetchurl stdenv zlib;
+  libarchive = selectVersion ../development/libraries/libarchive "2.4.12" {
+    inherit fetchurl stdenv zlib bzip2 e2fsprogs sharutils;
   };
 
   libassuan = import ../development/libraries/libassuan {
@@ -2541,22 +2498,18 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  libdbiFun = lib.sumArgs (selectVersion ../development/libraries/libdbi) {
+  libdbiFun = lib.sumArgs (selectVersion ../development/libraries/libdbi "0.8.2") {
     inherit stdenv fetchurl builderDefs;
   };
 
-  libdbi = libdbiFun {
-    version = "0.8.2";
-  } null;
+  libdbi = libdbiFun null;
 
-  libdbiDriversFun = lib.sumArgs (selectVersion ../development/libraries/libdbi-drivers) {
+  libdbiDriversFun = lib.sumArgs (selectVersion ../development/libraries/libdbi-drivers "0.8.2-1") {
     inherit stdenv fetchurl builderDefs libdbi;
   };
 
   libdbiDrivers = libdbiDriversFun {
-    version = "0.8.2-1";
-    mysql = mysql5;
-    inherit sqlite;
+    inherit sqlite mysql;
   } null;
 
   libdv = import ../development/libraries/libdv {
@@ -2587,14 +2540,12 @@ rec {
     inherit fetchurl stdenv gettext;
   };
 
-  libextractorFun = lib.sumArgs (selectVersion ../development/libraries/libextractor)
+  libextractorFun = lib.sumArgs (selectVersion ../development/libraries/libextractor "0.5.18")
   {
     inherit fetchurl stdenv builderDefs zlib;
   };
 
-  libextractor = libextractorFun {
-    version = "0.5.18";
-  } null;
+  libextractor = libextractorFun null;
 
   libgcrypt = import ../development/libraries/libgcrypt {
     inherit fetchurl stdenv libgpgerror;
@@ -2631,6 +2582,10 @@ rec {
     inherit fetchurl stdenv pkgconfig libraw1394;
   };
 
+  libjingle = selectVersion ../development/libraries/libjingle "0.3.11" {
+    inherit fetchurl stdenv mediastreamer;
+  };
+
   libjpeg = import ../development/libraries/libjpeg {
     inherit fetchurl stdenv libtool;
   };
@@ -2664,6 +2619,14 @@ rec {
     inherit fetchurl stdenv;
   };
 
+  liboilFun = lib.sumArgs
+    (selectVersion ../development/libraries/liboil "0.3.12") {
+    inherit fetchurl stdenv pkgconfig;
+  };
+
+  liboil = liboilFun null;
+
+
   liboop = import ../development/libraries/liboop {
     inherit fetchurl stdenv;
   };
@@ -2680,19 +2643,17 @@ rec {
     inherit fetchurl stdenv zlib;
   };
 
-  /*libscdFun = lib.sumArgs (selectVersion ../development/libraries/libscd) {
+  /*libscdFun = lib.sumArgs (selectVersion ../development/libraries/libscd "0.4.2") {
     inherit stdenv fetchurl builderDefs libextractor perl pkgconfig;
   };
 
-  libscd = libscdFun {
-    version = "0.4.2";
-  } null;*/
+  libscd = libscdFun null;*/
 
   libsigcxx = import ../development/libraries/libsigcxx {
     inherit fetchurl stdenv pkgconfig;
   };
 
-  libsigsegv = import ../development/libraries/libsigsegv {
+  libsigsegv = selectVersion ../development/libraries/libsigsegv "2.5" {
     inherit fetchurl stdenv;
   };
 
@@ -2743,6 +2704,12 @@ rec {
     inherit fetchurl stdenv;
   };
 
+  libxklavier = selectVersion ../development/libraries/libxklavier "3.4" {
+    inherit fetchurl stdenv xkeyboard_config pkgconfig libxml2;
+    inherit (xorg) libX11 libICE libxkbfile;
+    inherit (gtkLibs) glib;
+  };
+
   libxml2 = import ../development/libraries/libxml2 {
     inherit fetchurl stdenv zlib python;
     pythonSupport = false;
@@ -2771,7 +2738,7 @@ rec {
   };
 
   log4cxx = import ../development/libraries/log4cxx {
-	  inherit fetchurl stdenv automake autoconf libtool cppunit libxml2;
+	  inherit fetchurl stdenv automake autoconf libtool cppunit libxml2 boost;
   };
 
   loudmouth = import ../development/libraries/loudmouth {
@@ -2782,6 +2749,16 @@ rec {
   lzo = import ../development/libraries/lzo {
 	  inherit fetchurl stdenv;
   };
+
+#failed to build
+  mediastreamerFun = lib.sumArgs (selectVersion
+      ../development/libraries/mediastreamer "2.2.0-cvs20080207") {
+    inherit fetchurl stdenv automake libtool autoconf alsaLib pkgconfig speex
+      ortp;
+    ffmpeg = ffmpeg_svn;
+  };
+
+  mediastreamer = mediastreamerFun null;
 
   mesaSupported =
     system == "i686-linux" ||
@@ -2798,6 +2775,10 @@ rec {
 
   mpeg2dec = import ../development/libraries/mpeg2dec {
     inherit fetchurl stdenv;
+  };
+
+  msilbc = selectVersion ../development/libraries/msilbc "2.0.0" {
+    inherit fetchurl stdenv ilbc mediastreamer pkgconfig;
   };
 
   mpich2 = import ../development/libraries/mpich2 {
@@ -2869,7 +2850,7 @@ rec {
     inherit fetchurl stdenv perl;
   };
 
-  ortp = import ../development/libraries/ortp {
+  ortp = selectVersion ../development/libraries/ortp "0.13.1" {
     inherit fetchurl stdenv;
   };
 
@@ -2881,11 +2862,12 @@ rec {
   pcre = import ../development/libraries/pcre {
     inherit fetchurl stdenv;
     unicodeSupport = getConfig ["pcre" "unicode"] false;
+    cplusplusSupport = !stdenv ? isDietLibC;
   };
 
   poppler = import ../development/libraries/poppler {
-	  inherit fetchurl stdenv qt4 cairo freetype fontconfig zlib libjpeg;
-	  inherit (gtkLibs) glib gtk;
+    inherit fetchurl stdenv qt4 cairo freetype fontconfig zlib libjpeg;
+    inherit (gtkLibs) glib gtk;
   };
 
   popt = import ../development/libraries/popt {
@@ -2915,13 +2897,12 @@ rec {
 
   qt4 = getVersion "qt4" qt4_alts;
   qt4_alts = import ../development/libraries/qt-4 {
-	inherit fetchurl fetchsvn zlib libjpeg libpng which mysql mesa openssl cups dbus
+    inherit fetchurl stdenv fetchsvn zlib libjpeg libpng which mysql mesa openssl cups dbus
 	  fontconfig freetype pkgconfig libtiff;
     inherit (xlibs) xextproto libXft libXrender libXrandr randrproto
 	  libXmu libXinerama xineramaproto libXcursor libICE libSM libX11 libXext
 	  inputproto fixesproto libXfixes;
     inherit (gnome) glib;
-    stdenv = overrideSetup stdenv ../stdenv/generic/setup-new-2.sh;
     openglSupport = mesaSupported;
     mysqlSupport = true;
   };
@@ -2938,8 +2919,9 @@ rec {
 
 # Also known as librdf, includes raptor and rasqal
   redland = import ../development/libraries/redland {
-    inherit fetchurl stdenv openssl libxml2 pkgconfig perl;
-	bdb = db4;
+    inherit fetchurl stdenv openssl libxml2 pkgconfig perl postgresql sqlite
+      mysql libxslt curl pcre;
+    bdb = db4;
   };
 
   rte = import ../development/libraries/rte {
@@ -3010,9 +2992,8 @@ rec {
 	qt = qt4;
   };
 
-  tkFun = lib.sumArgs (selectVersion ../development/libraries/tk) {
+  tkFun = lib.sumArgs (selectVersion ../development/libraries/tk "8.4.16") {
     inherit fetchurl stdenv tcl x11;
-    version = "8.4.16";
   };
 
   tk = tkFun null;
@@ -3206,8 +3187,7 @@ rec {
   };
 
   wxHaskell = import ../development/libraries/haskell/wxHaskell {
-    inherit stdenv fetchurl unzip wxGTK;
-    ghc = ghc661;
+    inherit stdenv fetchurl unzip wxGTK ghc;
   };
 
   # wxHaskell68 = lowPrio (appendToName "ghc68" (import ../development/libraries/haskell/wxHaskell {
@@ -3243,7 +3223,7 @@ rec {
   perlCGISession = import ../development/perl-modules/generic perl {
     name = "CGI-Session-3.95";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/S/SH/SHERZODR/CGI-Session-3.95.tar.gz;
+      url = mirror://cpan/authors/id/S/SH/SHERZODR/CGI-Session-3.95.tar.gz;
       md5 = "fe9e46496c7c711c54ca13209ded500b";
     };
   };
@@ -3255,7 +3235,7 @@ rec {
   perlCryptPasswordMD5 = import ../development/perl-modules/generic perl {
     name = "Crypt-PasswdMD5-1.3";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/L/LU/LUISMUNOZ/Crypt-PasswdMD5-1.3.tar.gz;
+      url = mirror://cpan/authors/id/L/LU/LUISMUNOZ/Crypt-PasswdMD5-1.3.tar.gz;
       sha256 = "13j0v6ihgx80q8jhyas4k48b64gnzf202qajyn097vj8v48khk54";
     };
   };
@@ -3275,7 +3255,7 @@ rec {
   perlDigestSHA1 = import ../development/perl-modules/generic perl {
     name = "Digest-SHA1-2.11";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/G/GA/GAAS/Digest-SHA1-2.11.tar.gz;
+      url = mirror://cpan/authors/id/G/GA/GAAS/Digest-SHA1-2.11.tar.gz;
       md5 = "2449bfe21d6589c96eebf94dae24df6b";
     };
   };
@@ -3283,7 +3263,7 @@ rec {
   perlEmailAddress = import ../development/perl-modules/generic perl {
     name = "Email-Address-1.888";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/R/RJ/RJBS/Email-Address-1.888.tar.gz;
+      url = mirror://cpan/authors/id/R/RJ/RJBS/Email-Address-1.888.tar.gz;
       sha256 = "0c6b8djnmiy0niskrvywd6867xd1qmn241ffdwj957dkqdakq9yx";
     };
   };
@@ -3291,7 +3271,7 @@ rec {
   perlEmailSend = import ../development/perl-modules/generic perl {
     name = "Email-Send-2.185";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/R/RJ/RJBS/Email-Send-2.185.tar.gz;
+      url = mirror://cpan/authors/id/R/RJ/RJBS/Email-Send-2.185.tar.gz;
       sha256 = "0pbgnnbmv6z3zzqaiq1sdcv5d26ijhw4p8k8kp6ac7arvldblamz";
     };
     propagatedBuildInputs = [perlEmailSimple perlEmailAddress perlModulePluggable perlReturnValue];
@@ -3300,7 +3280,7 @@ rec {
   perlEmailSimple = import ../development/perl-modules/generic perl {
     name = "Email-Simple-2.003";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/R/RJ/RJBS/Email-Simple-2.003.tar.gz;
+      url = mirror://cpan/authors/id/R/RJ/RJBS/Email-Simple-2.003.tar.gz;
       sha256 = "0h8873pidhkqy7415s5sx8z614d0haxiknbjwrn65icrr2m0b8g6";
     };
   };
@@ -3308,7 +3288,7 @@ rec {
   perlHTMLParser = import ../development/perl-modules/generic perl {
     name = "HTML-Parser-3.56";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/G/GA/GAAS/HTML-Parser-3.56.tar.gz;
+      url = mirror://cpan/authors/id/G/GA/GAAS/HTML-Parser-3.56.tar.gz;
       sha256 = "0x1h42r54aq4yqpwi7mla4jzia9c5ysyqh8ir2nav833f9jm6g2h";
     };
     propagatedBuildInputs = [perlHTMLTagset];
@@ -3317,7 +3297,7 @@ rec {
   perlHTMLTagset = import ../development/perl-modules/generic perl {
     name = "HTML-Tagset-3.10";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/P/PE/PETDANCE/HTML-Tagset-3.10.tar.gz;
+      url = mirror://cpan/authors/id/P/PE/PETDANCE/HTML-Tagset-3.10.tar.gz;
       sha256 = "05k292qy7jzjlmmybis8nncpnwwa4jfkm7q3gq6866ydxrzds9xh";
     };
   };
@@ -3341,7 +3321,7 @@ rec {
   perlLWP = import ../development/perl-modules/generic perl {
     name = "libwww-perl-5.808";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/G/GA/GAAS/libwww-perl-5.808.tar.gz;
+      url = mirror://cpan/authors/id/G/GA/GAAS/libwww-perl-5.808.tar.gz;
       sha256 = "1r5rslx68yplyd07bvjahjjrrqb56bhgg6gwdr9c16mv2s57gq12";
     };
     propagatedBuildInputs = [perlURI perlHTMLParser perlHTMLTagset];
@@ -3350,7 +3330,7 @@ rec {
   perlModulePluggable = import ../development/perl-modules/generic perl {
     name = "Module-Pluggable-3.5";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/S/SI/SIMONW/Module-Pluggable-3.5.tar.gz;
+      url = mirror://cpan/authors/id/S/SI/SIMONW/Module-Pluggable-3.5.tar.gz;
       sha256 = "08rywi79pqn2c8zr17fmd18lpj5hm8lxd1j4v2k002ni8vhl43nv";
     };
     patches = [
@@ -3361,7 +3341,7 @@ rec {
   perlReturnValue = import ../development/perl-modules/generic perl {
     name = "Return-Value-1.302";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/R/RJ/RJBS/Return-Value-1.302.tar.gz;
+      url = mirror://cpan/authors/id/R/RJ/RJBS/Return-Value-1.302.tar.gz;
       sha256 = "0hf5rmfap49jh8dnggdpvapy5r4awgx5hdc3acc9ff0vfqav8azm";
     };
   };
@@ -3369,7 +3349,7 @@ rec {
   perlStringMkPasswd = import ../development/perl-modules/generic perl {
     name = "String-MkPasswd-0.02";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/C/CG/CGRAU/String-MkPasswd-0.02.tar.gz;
+      url = mirror://cpan/authors/id/C/CG/CGRAU/String-MkPasswd-0.02.tar.gz;
       sha256 = "0si4xfgf8c2pfag1cqbr9jbyvg3hak6wkmny56kn2qwa4ljp9bk6";
     };
   };
@@ -3385,7 +3365,7 @@ rec {
   perlURI = import ../development/perl-modules/generic perl {
     name = "URI-1.35";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/G/GA/GAAS/URI-1.35.tar.gz;
+      url = mirror://cpan/authors/id/G/GA/GAAS/URI-1.35.tar.gz;
       md5 = "1a933b1114c41a25587ee59ba8376f7c";
     };
   };
@@ -3393,7 +3373,7 @@ rec {
   perlXMLDOM = import ../development/perl-modules/generic perl {
     name = "XML-DOM-1.44";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/T/TJ/TJMATHER/XML-DOM-1.44.tar.gz;
+      url = mirror://cpan/authors/id/T/TJ/TJMATHER/XML-DOM-1.44.tar.gz;
       sha256 = "1r0ampc88ni3sjpzr583k86076qg399arfm9xirv3cw49k3k5bzn";
     };
 #    buildInputs = [libxml2];
@@ -3435,7 +3415,7 @@ rec {
   perlXMLRegExp = import ../development/perl-modules/generic perl {
     name = "XML-RegExp-0.03";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/T/TJ/TJMATHER/XML-RegExp-0.03.tar.gz;
+      url = mirror://cpan/authors/id/T/TJ/TJMATHER/XML-RegExp-0.03.tar.gz;
       sha256 = "1gkarylvdk3mddmchcwvzq09gpvx5z26nybp38dg7mjixm5bs226";
     };
   };
@@ -3470,7 +3450,7 @@ rec {
   perlXMLWriter = import ../development/perl-modules/generic perl {
     name = "XML-Writer-0.602";
     src = fetchurl {
-      url = http://search.cpan.org/CPAN/authors/id/J/JO/JOSEPHW/XML-Writer-0.602.tar.gz;
+      url = mirror://cpan/authors/id/J/JO/JOSEPHW/XML-Writer-0.602.tar.gz;
       sha256 = "0kdi022jcn9mwqsxy2fiwl2cjlid4x13r038jvi426fhjknl11nl";
     };
   };
@@ -3584,15 +3564,17 @@ rec {
     inherit fetchurl stdenv apacheHttpd jdk;
   };
 
-  mysql = import ../servers/sql/mysql {
+  mysql4 = import ../servers/sql/mysql {
     inherit fetchurl stdenv ncurses zlib perl;
     ps = procps; /* !!! Linux only */
   };
 
   mysql5 = import ../servers/sql/mysql5 {
-    inherit fetchurl stdenv ncurses zlib perl;
+    inherit fetchurl stdenv ncurses zlib perl openssl;
     ps = procps; /* !!! Linux only */
   };
+
+  mysql = mysql5;
 
   mysql_jdbc = import ../servers/sql/mysql/jdbc {
     inherit fetchurl stdenv ant;
@@ -3607,7 +3589,13 @@ rec {
     inherit fetchurl stdenv openssh;
   };
 
-  postgresql = import ../servers/sql/postgresql {
+  openfireFun = lib.sumArgs (selectVersion ../servers/xmpp/openfire "3.4.5") {
+    inherit builderDefs jre;
+  };
+
+  openfire = openfireFun null;
+
+  postgresql = selectVersion ../servers/sql/postgresql "8.3.0" {
     inherit fetchurl stdenv readline ncurses zlib;
   };
 
@@ -3643,7 +3631,7 @@ rec {
   xorg = recurseIntoAttrs (import ../servers/x11/xorg {
     inherit fetchurl stdenv pkgconfig freetype fontconfig
       libxslt expat libdrm libpng zlib perl mesa mesaHeaders
-      xkeyboard_config gettext;
+      xkeyboard_config dbus hal;
   });
 
 
@@ -3674,18 +3662,21 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  alsaLib = import ../os-specific/linux/alsa/library {
-    inherit fetchurl stdenv;
+  alsaFun = lib.sumArgs (selectVersion ../os-specific/linux/alsa "1.0.16") {
+    inherit fetchurl stdenv ncurses gettext;
   };
 
-  atherosFun = lib.sumArgs (selectVersion ../os-specific/linux/atheros) {
+  alsa = alsaFun null;
+
+  alsaLib = alsa.alsaLib;
+
+  alsaUtils = alsa.alsaUtils;
+
+  atherosFun = lib.sumArgs (selectVersion ../os-specific/linux/atheros "r3122") {
     inherit fetchurl stdenv builderDefs;
   };
 
-  atherosVersion = "r3122";
-
   atherosFunCurrent = kernel: atherosFun {
-    version = atherosVersion;
     inherit kernel;
   } null;
 
@@ -3695,10 +3686,6 @@ rec {
 
   bridge_utils = import ../os-specific/linux/bridge_utils {
     inherit fetchurl stdenv autoconf automake;
-  };
-
-  alsaUtils = import ../os-specific/linux/alsa/utils {
-    inherit fetchurl stdenv alsaLib ncurses gettext;
   };
 
   cramfsswap = import ../os-specific/linux/cramfsswap {
@@ -3714,18 +3701,16 @@ rec {
     static = true;
   }));
 
-  dmidecodeFun = lib.sumArgs (selectVersion ../os-specific/linux/dmidecode) {
+  dmidecodeFun = lib.sumArgs (selectVersion ../os-specific/linux/dmidecode "2.9") {
     inherit fetchurl stdenv builderDefs;
   };
 
-  dmidecode = dmidecodeFun {
-    version = "2.9";
-  } null;
+  dmidecode = dmidecodeFun null;
 
   dietlibc = import ../os-specific/linux/dietlibc {
     inherit fetchurl glibc;
     # Dietlibc 0.30 doesn't compile on PPC with GCC 4.1, bus GCC 3.4 works.
-   stdenv = if stdenv.system == "powerpc-linux" then overrideGCC stdenv gcc34 else stdenv;
+    stdenv = if stdenv.system == "powerpc-linux" then overrideGCC stdenv gcc34 else stdenv;
   };
 
   e2fsprogs = import ../os-specific/linux/e2fsprogs {
@@ -3800,9 +3785,11 @@ rec {
     kernelHeaders = stdenv.gcc.libc.kernelHeaders;
   };
 
-  iptables = import ../os-specific/linux/iptables {
-    inherit fetchurl stdenv;
+  iptablesFun = lib.sumArgs (selectVersion ../os-specific/linux/iptables "1.4.0") {
+    inherit builderDefs kernelHeaders;
   };
+
+  iptables = iptablesFun null;
 
   ipw2200fw = import ../os-specific/linux/firmware/ipw2200 {
     inherit fetchurl stdenv;
@@ -3824,15 +3811,13 @@ rec {
     inherit fetchurl stdenv bison flex;
   };
 
-  kernelHeaders = import ../os-specific/linux/kernel-headers {
-    inherit fetchurl stdenv;
-  };
+  kernelHeaders = kernelHeaders_2_6_23;
 
   kernelHeaders_2_6_21 = import ../os-specific/linux/kernel-headers/2.6.21.3.nix {
     inherit fetchurl stdenv;
   };
 
-  kernelHeaders_2_6_23 = import ../os-specific/linux/kernel-headers/2.6.23.1.nix {
+  kernelHeaders_2_6_23 = import ../os-specific/linux/kernel-headers/2.6.23.16.nix {
     inherit fetchurl stdenv;
   };
 
@@ -4047,13 +4032,12 @@ rec {
       [(getConfig ["kernel" "addConfig"] "")];
   };
 
-  kqemuFun = lib.sumArgs (selectVersion ../os-specific/linux/kqemu) {
+  kqemuFun = lib.sumArgs (selectVersion ../os-specific/linux/kqemu "1.3.0pre11") {
     inherit fetchurl stdenv builderDefs;
   };
 
   # No finished expression is provided - pick your own kernel
   kqemuFunCurrent = theKernel:  (kqemuFun { 
-    version = "1.3.0pre11";
     kernel = theKernel;
   } null);
 
@@ -4251,13 +4235,11 @@ rec {
     inherit fetchurl stdenv;
   };
 
-  sdparmFun = lib.sumArgs (selectVersion ../os-specific/linux/sdparm) {
+  sdparmFun = lib.sumArgs (selectVersion ../os-specific/linux/sdparm "1.02") {
     inherit fetchurl stdenv builderDefs;
   };
 
-  sdparm = sdparmFun {
-    version = "1.02";
-  } null;
+  sdparm = sdparmFun null;
  
   shadowutils = import ../os-specific/linux/shadow {
     inherit fetchurl stdenv;
@@ -4418,7 +4400,7 @@ rec {
      inherit fetchurl stdenv;
   };
 
-  shared_mime_info = import ../data/misc/shared-mime-info {
+  shared_mime_info = selectVersion ../data/misc/shared-mime-info "0.23" {
     inherit fetchurl stdenv perl perlXMLParser pkgconfig gettext libxml2;
     inherit (gtkLibs) glib;
   };
@@ -4439,10 +4421,9 @@ rec {
     inherit fetchurl stdenv cabextract;
   };
 
-  xkeyboard_configFun = lib.sumArgs (selectVersion ../data/misc/xkeyboard-config ) {
+  xkeyboard_configFun = lib.sumArgs (selectVersion ../data/misc/xkeyboard-config "1.2") {
     inherit fetchurl stdenv perl perlXMLParser gettext;
     inherit (xlibs) xkbcomp;
-    version = "1.2";
   };
 
   xkeyboard_config = xkeyboard_configFun null;
@@ -4482,11 +4463,10 @@ rec {
   };
 
   audacity = import ../applications/audio/audacity {
-    inherit fetchurl libogg libvorbis libsndfile libmad 
+    inherit fetchurl stdenv libogg libvorbis libsndfile libmad 
       pkgconfig gettext;
     inherit (gtkLibs) gtk glib;
     wxGTK = wxGTK28deps;
-    stdenv = overrideGCC stdenv gcc41NPTL;
     inherit builderDefs stringsWithDeps;
   };
 
@@ -4520,14 +4500,14 @@ rec {
     inherit fetchurl stdenv;
     openal = openalSoft;
   };
+
   blender = import ../applications/misc/blender {
-    inherit cmake mesa gettext freetype SDL libtiff fetchurl glibc scons x11 lib
+    inherit stdenv cmake mesa gettext freetype SDL libtiff fetchurl glibc scons x11 lib
       libjpeg libpng zlib /* smpeg  sdl */;
     inherit (xlibs) inputproto libXi;
     python = builtins.getAttr "2.5" python_alts;
     freealut = freealut_soft;
     openal = openalSoft;
-    stdenv = stdenvUsingSetupNew2;
     openexr = openexr_1_4_0;
   };
 
@@ -4548,6 +4528,8 @@ rec {
   bvi = import ../applications/editors/bvi {
     inherit fetchurl stdenv ncurses;
   };
+
+  cdparanoia = cdparanoiaIII;
 
   cdparanoiaIII = import ../applications/audio/cdparanoia {
     inherit fetchurl stdenv;
@@ -4586,7 +4568,7 @@ rec {
     version = "0.6.2";
   };
 
-  compizFun = lib.sumArgs (assert mesaSupported; selectVersion ../applications/window-managers/compiz) {
+  compizFun = lib.sumArgs (assert mesaSupported; selectVersion ../applications/window-managers/compiz "0.6.2") {
     inherit lib builderDefs stringsWithDeps;
     inherit fetchurl stdenv pkgconfig libpng mesa perl perlXMLParser libxslt;
     inherit (xorg) libXcomposite libXfixes libXdamage libXrandr
@@ -4604,7 +4586,6 @@ rec {
   };
 
   compiz = compizFun {
-    version = getConfig ["compiz" "version"] "0.6.2";
     extraConfigureFlags = getConfig ["compiz" "extraConfigureFlags"] [];
   } null;
 
@@ -4656,14 +4637,12 @@ rec {
   };
   
   darcs = import ../applications/version-management/darcs {
-    inherit fetchurl stdenv zlib ncurses curl;
-    ghc = ghc661;
+    inherit fetchurl stdenv zlib ncurses curl ghc;
   };
 
   # some speed bottle necks are resolved in this version I think .. perhaps you like to try it? 
   darcs_2_pre = import ../applications/version-management/darcs_2_pre.nix {
-    inherit fetchurl stdenv zlib ncurses curl;
-    ghc = ghc661;
+    inherit fetchurl stdenv zlib ncurses curl ghc;
   };
 
   dia = import ../applications/graphics/dia {
@@ -4684,13 +4663,12 @@ rec {
     inherit fetchurl stdenv qt4 djvulibre;
   };
 
-  dvdplusrwtoolsFun = lib.sumArgs (selectVersion ../os-specific/linux/dvd+rw-tools) {
+  /* TODO: rename to be able to set version */
+  dvdplusrwtoolsFun = lib.sumArgs (selectVersion ../os-specific/linux/dvd+rw-tools "7.0") {
     inherit fetchurl stdenv builderDefs cdrkit m4;
   };
  
-  dvdplusrwtools = dvdplusrwtoolsFun {
-    version = "7.0";
-  } null;
+  dvdplusrwtools = dvdplusrwtoolsFun null;
 
   eclipse = plugins:
     import ../applications/editors/eclipse {
@@ -4742,13 +4720,13 @@ rec {
     openexr = openexr_1_6_1;
   };
 
-  fbpanelFun = lib.sumArgs (selectVersion ../applications/window-managers/fbpanel) {
+  fbpanelFun = lib.sumArgs (selectVersion ../applications/window-managers/fbpanel "4.12") {
     inherit fetchurl stdenv builderDefs pkgconfig libpng libjpeg libtiff librsvg;
     inherit (gtkLibs) gtk;
     inherit (xlibs) libX11 libXmu libXpm;
   };
 
-  fbpanel = fbpanelFun {version="4.12";} null;
+  fbpanel = fbpanelFun null;
 
   fetchmail = import ../applications/misc/fetchmail {
     inherit stdenv fetchurl openssl;
@@ -4828,7 +4806,9 @@ rec {
   };
 
   pidgin = import ../applications/networking/instant-messengers/pidgin {
-    inherit fetchurl stdenv pkgconfig perl perlXMLParser libxml2 openssl nss gtkspell GStreamer aspell gettext ncurses;
+    inherit fetchurl stdenv pkgconfig perl perlXMLParser libxml2 openssl nss
+      gtkspell aspell gettext ncurses;
+    GStreamer = gst_all.gstreamer;
     inherit (gtkLibs) gtk;
     inherit (gnome) startupnotification;
     inherit (xlibs) libXScrnSaver;
@@ -4863,16 +4843,16 @@ rec {
   };
 
   gnash = assert mesaSupported; import ../applications/video/gnash {
-    inherit fetchurl stdenv SDL SDL_mixer GStreamer
-            libogg libxml2 libjpeg mesa libpng;
+    inherit fetchurl stdenv SDL SDL_mixer libogg libxml2 libjpeg mesa libpng;
+    GStreamer = gst_all.gstreamer;
     inherit (xlibs) libX11 libXext libXi libXmu;
   };
 
-  gocrFun = lib.sumArgs (selectVersion ../applications/graphics/gocr) {
+  gocrFun = lib.sumArgs (selectVersion ../applications/graphics/gocr "0.44") {
     inherit builderDefs fetchurl stdenv;
   };
 
-  gocr = gocrFun {version = "0.44";} null;
+  gocr = gocrFun null;
 
   gphoto2 = import ../applications/misc/gphoto2 {
     inherit fetchurl stdenv pkgconfig libgphoto2 libexif popt readline gettext;
@@ -4881,11 +4861,6 @@ rec {
   gqview = import ../applications/graphics/gqview {
     inherit fetchurl stdenv pkgconfig libpng;
     inherit (gtkLibs) gtk;
-  };
-
-  GStreamer = import ../applications/audio/GStreamer {
-    inherit fetchurl stdenv perl bison flex pkgconfig libxml2;
-    inherit (gtkLibs) glib;
   };
 
   gv = import ../applications/misc/gv {
@@ -4909,7 +4884,7 @@ rec {
     inherit (xlibs) libX11 libXft libXext libXinerama libXrandr;
   };
 
-  imagemagickFun = lib.sumArgs (import ../applications/graphics/ImageMagick) {
+  imagemagickFun = lib.sumArgs (selectVersion ../applications/graphics/ImageMagick "6.3.8-5" ) {
     inherit stdenv fetchurl libtool; 
   };
 
@@ -4927,10 +4902,10 @@ rec {
 
   inkscape = import ../applications/graphics/inkscape {
     inherit fetchurl stdenv perl perlXMLParser pkgconfig zlib
-      popt libxml2 libxslt libpng boehmgc fontconfig gtkmm
-      glibmm libsigcxx lcms boost gettext
+      popt libxml2 libxslt libpng boehmgc fontconfig
+      libsigcxx lcms boost gettext cairomm
       python pyxml makeWrapper;
-    inherit (gtkLibs) gtk glib;
+    inherit (gtkLibs) gtk glib glibmm gtkmm;
     inherit (xlibs) libXft;
   };
 
@@ -4945,8 +4920,7 @@ rec {
   };
 
   jedit = import ../applications/jedit {
-    inherit fetchurl ant;
-    stdenv = overrideSetup stdenv ../stdenv/generic/setup-new-2.sh;
+    inherit fetchurl stdenv ant;
   };
 
   joe = import ../applications/editors/joe {
@@ -4954,16 +4928,14 @@ rec {
   };
 
   kino = import ../applications/video/kino {
-    stdenv = stdenvUsingSetupNew2;
-    inherit fetchurl pkgconfig libxml2 perl perlXMLParser 
+    inherit fetchurl stdenv pkgconfig libxml2 perl perlXMLParser 
       libdv libraw1394 libavc1394 libiec61883 x11 gettext cairo; /* libavformat */
     inherit libsamplerate ffmpeg;
     inherit (gnome) libglade gtk glib;
     inherit (xlibs) libXv libX11;
     inherit (gtkLibs) pango;
-
-  # #  optional
-  #  inherit ffmpeg2theora sox, vorbis-tools lame mjpegtools dvdauthor 'Q'dvdauthor growisofs mencoder;
+    # #  optional
+    #  inherit ffmpeg2theora sox, vorbis-tools lame mjpegtools dvdauthor 'Q'dvdauthor growisofs mencoder;
   };
 
   kuickshow = import ../applications/graphics/kuickshow {
@@ -4973,7 +4945,7 @@ rec {
   };
 
   lame = import ../applications/audio/lame {
-    inherit fetchurl stdenv ;
+    inherit fetchurl stdenv;
   };
 
   ladspaH = import ../applications/audio/ladspa-plugins/ladspah.nix {
@@ -5147,7 +5119,7 @@ rec {
     python = builtins.getAttr "2.5" python_alts;
   };
 
-  qemuFun = lib.sumArgs (selectVersion ../applications/virtualization/qemu ) {
+  qemuFun = lib.sumArgs (selectVersion ../applications/virtualization/qemu "0.9.0") {
     inherit fetchurl;
     stdenv = overrideGCC stdenv gcc34;
     builderDefs = builderDefs {
@@ -5156,18 +5128,14 @@ rec {
     inherit SDL zlib which;
   };
 
-  qemu = qemuFun {
-    version = "0.9.0";
-  } null;
+  qemu = qemuFun null;
 
   qemuImageFun = lib.sumArgs 
-    (selectVersion ../applications/virtualization/qemu/linux-img ) {
+    (selectVersion ../applications/virtualization/qemu/linux-img "0.2") {
     inherit builderDefs fetchurl stdenv;
   };
 
-  qemuImage = qemuImageFun {
-    version = "0.2";
-  } null;
+  qemuImage = qemuImageFun null;
 
   ratpoison = import ../applications/window-managers/ratpoison {
     inherit fetchurl stdenv fontconfig readline;
@@ -5202,7 +5170,7 @@ rec {
 
   # = urxvt
   rxvt_unicode = import ../applications/misc/rxvt_unicode {
-    inherit lib fetchurl stdenv;
+    inherit lib fetchurl stdenv perl;
     inherit (xlibs) libXt libX11 libXft;
   };
 
@@ -5368,16 +5336,14 @@ rec {
     flags = [ "X11" ]; # only flag "X11" by now
   };
 
-  /*virtualboxFun = lib.sumArgs (selectVersion ../applications/virtualization/virtualbox) {
+  /*virtualboxFun = lib.sumArgs (selectVersion ../applications/virtualization/virtualbox "1.5.2") {
     inherit stdenv fetchurl builderDefs bridge_utils umlutilities kernelHeaders 
       wine jre libxslt SDL qt3 openssl zlib;
     inherit (xorg) libXcursor;
     inherit (gnome) libIDL;
   };
 
-  virtualbox = virtualboxFun {
-    version = "1.5.2";
-  } null;*/
+  virtualbox = virtualboxFun null;*/
 
   vlc = import ../applications/video/vlc {
     inherit fetchurl stdenv perl x11 wxGTK
@@ -5424,8 +5390,17 @@ rec {
     # RealPlayer is disabled by default for legal reasons.
     ++ lib.optional (system != "i686-linux" && getConfig ["firefox" "enableRealPlayer"] false) RealPlayer
     ++ lib.optional (getConfig ["firefox" "enableMPlayer"] true) MPlayerPlugin
-    ++ lib.optional (supportsJDK && jrePlugin ? mozillaPlugin) jrePlugin;
+    ++ lib.optional (supportsJDK && getConfig ["firefox" "jre"] true && jrePlugin ? mozillaPlugin) jrePlugin;
   };
+
+  x11vncFun = lib.sumArgs (selectVersion ../tools/X11/x11vnc "0.9.3") {
+    inherit builderDefs openssl zlib libjpeg ;
+    inherit (xlibs) libXfixes fixesproto libXdamage damageproto 
+      libX11 xproto libXtst libXinerama xineramaproto libXrandr randrproto
+      libXext xextproto inputproto recordproto;
+  };
+
+  x11vnc = x11vncFun null;
 
   xara = import ../applications/graphics/xara {
     inherit fetchurl stdenv autoconf automake libtool gettext cvs wxGTK
@@ -5476,13 +5451,12 @@ rec {
     base14Fonts = "${ghostscript}/share/ghostscript/fonts";
   };
 
-  xscreensaverFun = lib.sumArgs (selectVersion ../applications/graphics/xscreensaver) {
+  xscreensaverFun = lib.sumArgs (selectVersion ../applications/graphics/xscreensaver "5.04") {
     inherit stdenv fetchurl builderDefs lib pkgconfig bc perl intltool;
     inherit (xlibs) libX11 libXmu;
   };
 
   xscreensaver = xscreensaverFun {
-    version = "5.04";
     flags = ["GL" "gdkpixbuf" "DPMS" "gui" "jpeg"];
     inherit mesa libxml2 libjpeg;
     inherit (gtkLibs) gtk;
@@ -5490,8 +5464,8 @@ rec {
   } null;
 
   xterm = import ../applications/misc/xterm {
-    inherit fetchurl stdenv ncurses;
-    inherit (xlibs) libXaw xproto libXt libX11 libSM libICE;
+    inherit fetchurl stdenv ncurses freetype pkgconfig;
+    inherit (xlibs) libXaw xproto libXt libX11 libSM libICE libXext libXft luit;
   };
 
   xlaunch = import ../tools/X11/xlaunch {
@@ -5521,13 +5495,12 @@ rec {
   # doesn't compile yet - in case someone else want's to continue .. 
   /*
   qgis_svn = import ../applications/misc/qgis_svn {
-    inherit mkDerivationByConfiguration fetchsvn flex lib
+    inherit mkDerivationByConfiguration fetchsvn stdenv flex lib
             ncurses fetchurl perl cmake gdal geos proj x11
             gsl libpng zlib
             sqlite glibc fontconfig freetype / * use libc from stdenv ? - to lazy now - Marc * /;
     inherit (xlibs) libSM libXcursor libXinerama libXrandr libXrender;
     inherit (xorg) libICE;
-    stdenv = stdenvUsingSetupNew2;
     qt = qt4;
     bison = bison23;
 
@@ -5551,7 +5524,7 @@ rec {
 
   ### GAMES
 
-  construoFun = lib.sumArgs (selectVersion ../games/construo) {
+  construoFun = lib.sumArgs (selectVersion ../games/construo "0.2.2") {
     inherit stdenv fetchurl builderDefs
       zlib;
     inherit (xlibs) libX11 xproto;
@@ -5559,7 +5532,6 @@ rec {
 
   construo = construoFun {
     inherit mesa freeglut;
-    version = "0.2.2";
   } null;
 
   exult = import ../games/exult {
@@ -5611,12 +5583,11 @@ rec {
   };
 
   # You still can override by passing more arguments.
-  spaceOrbitFun = lib.sumArgs (selectVersion ../games/orbit ) {
+  spaceOrbitFun = lib.sumArgs (selectVersion ../games/orbit "1.01") {
     inherit fetchurl stdenv builderDefs 
       mesa freeglut;
     inherit (gnome) esound;
     inherit (xlibs) libXt libX11 libXmu libXi libXext;
-    version = "1.01";
   };
 
   spaceOrbit = spaceOrbitFun null;
@@ -5649,7 +5620,7 @@ rec {
             perl perlXMLParser docbook_xml_dtd_42 docbook_xml_dtd_412
             gettext x11 libtiff libjpeg libpng gtkLibs xlibs bzip2
             libcm python dbus_glib ncurses which libxml2Python
-            iconnamingutils;
+            iconnamingutils openssl hal samba fam;
   });
 
   kdelibs = import ../desktops/kde/kdelibs {
@@ -5669,8 +5640,9 @@ rec {
       shared_mime_info alsaLib libungif cups mesa boost gpgme gettext redland
 	  xineLib libgphoto2 djvulibre libogg flac lame libvorbis poppler readline
 	  saneBackends chmlib python libzip gmp sqlite libidn runCommand lib
-	  openbabel ocaml facile;
-	stdenv = stdenvUsingSetupNew2;
+	  openbabel ocaml facile stdenv jasper fam indilib libnova
+	  libarchive dbus;
+	#flac = builtins.getAttr "1.1.2" flacAlts;
 	cdparanoia = cdparanoiaIII;
     inherit (xlibs)
       inputproto kbproto scrnsaverproto xextproto xf86miscproto
@@ -5680,7 +5652,6 @@ rec {
       libxkbfile libXinerama;
     inherit (gtkLibs) glib;
     qt = qt4;
-	dbus = dbus_alts.withX11;
 	bison = bison23;
     openexr = openexr_1_6_1 ;
   });
@@ -5779,8 +5750,7 @@ rec {
   # don't have time for the source build right now
   # maven2
   mvn_bin = import ../misc/maven/maven-2.nix {
-    inherit fetchurl;
-    stdenv = stdenvUsingSetupNew2;
+    inherit fetchurl stdenv;
   };
 
   nix = import ../tools/package-management/nix {
@@ -5914,8 +5884,7 @@ rec {
   };
 
   wine = import ../misc/emulators/wine {
-    stdenv = overrideGCC stdenv gcc41NPTL;
-    inherit fetchurl flex bison mesa ncurses
+    inherit fetchurl stdenv flex bison mesa ncurses
       libpng libjpeg alsaLib lcms xlibs freetype
       fontconfig fontforge libxml2 libxslt openssl;
   };

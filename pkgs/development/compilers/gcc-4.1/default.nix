@@ -11,29 +11,31 @@ assert langC || langF77;
 
 with import ../../../lib;
 
-stdenv.mkDerivation ({
+stdenv.mkDerivation {
   name = "gcc-4.1.2";
   builder = if langF77 then ./fortran.sh else  ./builder.sh;
   
   src =
-    [(fetchurl {
+    optional /*langC*/ true (fetchurl {
       url = mirror://gnu/gcc/gcc-4.1.2/gcc-core-4.1.2.tar.bz2;
       sha256 = "07binc1hqlr0g387zrg5sp57i12yzd5ja2lgjb83bbh0h3gwbsbv";
-    })] ++
-    (if /*langCC*/ true then [(fetchurl {
+    }) ++
+    optional /*langCC*/ true (fetchurl {
       url = mirror://gnu/gcc/gcc-4.1.2/gcc-g++-4.1.2.tar.bz2;
       sha256 = "1qm2izcxna10jai0v4s41myki0xkw9174qpl6k1rnrqhbx0sl1hc";
-    })] else []) ++
-    (if langF77 then [(fetchurl {
+    }) ++
+    optional langF77 (fetchurl {
       url = mirror://gnu/gcc/gcc-4.1.2/gcc-fortran-4.1.2.tar.bz2;
       sha256 = "0772dhmm4gc10420h0d0mfkk2sirvjmjxz8j0ywm8wp5qf8vdi9z";
-    })] else []);
+    });
     
   patches =
     optional noSysDirs [./no-sys-dirs.patch];
     
   inherit noSysDirs profiledCompiler staticCompiler;
 
+  buildInputs = [gmp mpfr texinfo];
+  
   configureFlags = "
     --disable-multilib
     --disable-libstdcxx-pch
@@ -63,10 +65,3 @@ stdenv.mkDerivation ({
     priority = "7";
   };
 }
-
-// (if gmp != null || mpfr != null then {
-  buildInputs = []
-    ++ (if gmp != null then [gmp] else [])
-    ++ (if mpfr != null then [mpfr] else [])
-    ++ (if texinfo != null then [texinfo] else []);
-} else {}))

@@ -22,11 +22,7 @@ stdenv.mkDerivation {
     
   inherit noSysDirs langC langCC langF77 profiledCompiler;
 
-  buildInputs = [] 
-	++ (if gmp != null then [gmp] else [])
-	++ (if mpfr != null then [mpfr] else [])
-	++ (if texinfo != null then [texinfo] else [])
-	;
+  buildInputs = [gmp mpfr texinfo];
 
   configureFlags = "
     --disable-multilib
